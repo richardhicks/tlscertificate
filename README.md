@@ -31,21 +31,41 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 
 ## Installation
 
-### Option 1: Download from GitHub
+### Option 1: PowerShell Gallery (Recommended)
+
+The easiest way to install the script is from the [PowerShell Gallery](https://www.powershellgallery.com/packages/Get-TlsCertificate):
+
+```powershell
+# Install for the current user
+Install-Script -Name Get-TlsCertificate -Scope CurrentUser
+```
+
+```powershell
+# Install for all users (requires elevated permissions)
+Install-Script -Name Get-TlsCertificate -Scope AllUsers
+```
+
+After installation, the script is available from any PowerShell session:
+
+```powershell
+Get-TlsCertificate -Hostname 'www.example.com'
+```
+
+### Option 2: Download from GitHub
 
 ```powershell
 # Download the script directly
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/richardhicks/tlscertificate/main/Get-TlsCertificate.ps1" -OutFile "Get-TlsCertificate.ps1"
 ```
 
-### Option 2: Clone the Repository
+### Option 3: Clone the Repository
 
 ```powershell
 git clone https://github.com/richardhicks/tlscertificate.git
 cd tlscertificate
 ```
 
-### Option 3: Manual Download
+### Option 4: Manual Download
 
 1. Navigate to [https://github.com/richardhicks/tlscertificate](https://github.com/richardhicks/tlscertificate)
 2. Click on `Get-TlsCertificate.ps1`
@@ -123,10 +143,10 @@ RD Gateway servers typically use port 443.
 .\Get-TlsCertificate.ps1 -Hostname 'rdgw.contoso.com' -Port 443
 ```
 
-**Check a Remote Desktop Session Host:**
+**Check a Remote Desktop Session Host certificate:**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'rdp1.contoso.com' -Port 3389
+.\Get-TlsCertificate.ps1 -Hostname 'rdp01.contoso.com' -Port 3389
 ```
 
 ### VPN Servers
@@ -137,12 +157,10 @@ RD Gateway servers typically use port 443.
 .\Get-TlsCertificate.ps1 -Hostname 'vpn.contoso.com'
 ```
 
-### Exchange Servers
-
-**Check Exchange OWA/ECP certificate:**
+**Check an Always On VPN server:**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'mail.contoso.com'
+.\Get-TlsCertificate.ps1 -Hostname 'aovpn.contoso.com'
 ```
 
 ### ADFS Servers
