@@ -272,7 +272,7 @@ The script returns a custom PowerShell object with the following properties:
 
 ```
 Subject                 : CN=www.example.com
-SubjectAlternativeNames : {www.example.com, example.com}
+AlternativeNames        : {www.example.com, example.com}
 Issuer                  : CN=DigiCert TLS RSA SHA256 2020 CA1, O=DigiCert Inc, C=US
 SerialNumber            : 0123456789ABCDEF0123456789ABCDEF
 Thumbprint              : ABCDEF1234567890ABCDEF1234567890ABCDEF12
@@ -363,3 +363,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/richardhicks/tlscertificate/issues) on GitHub.
+
