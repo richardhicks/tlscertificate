@@ -17,7 +17,8 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 - Export certificates to PEM format files
 - Support for both RSA and ECC (Elliptic Curve) certificates
 - Detailed certificate information including:
-  - Subject and Issuer
+  - Subject and Subject Alternative Names (SANs)
+  - Issuer
   - Serial Number and Thumbprint
   - Validity period (Issued/Expires dates)
   - Public key algorithm and key size
@@ -257,6 +258,7 @@ The script returns a custom PowerShell object with the following properties:
 | Property | Description |
 |----------|-------------|
 | `Subject` | The subject name of the certificate |
+| `SubjectAlternativeNames` | The subject alternative names (SANs) of the certificate |
 | `Issuer` | The issuer name of the certificate |
 | `SerialNumber` | The serial number of the certificate |
 | `Thumbprint` | The SHA-1 thumbprint of the certificate |
@@ -269,15 +271,16 @@ The script returns a custom PowerShell object with the following properties:
 ### Example Output
 
 ```
-Subject            : CN=www.example.com
-Issuer             : CN=DigiCert TLS RSA SHA256 2020 CA1, O=DigiCert Inc, C=US
-SerialNumber       : 0123456789ABCDEF0123456789ABCDEF
-Thumbprint         : ABCDEF1234567890ABCDEF1234567890ABCDEF12
-Issued             : 1/1/2024 12:00:00 AM
-Expires            : 1/1/2025 11:59:59 PM
-PublicKeyAlgorithm : RSA
-KeySize            : 2048
-SignatureAlgorithm : sha256RSA
+Subject                 : CN=www.example.com
+SubjectAlternativeNames : {www.example.com, example.com}
+Issuer                  : CN=DigiCert TLS RSA SHA256 2020 CA1, O=DigiCert Inc, C=US
+SerialNumber            : 0123456789ABCDEF0123456789ABCDEF
+Thumbprint              : ABCDEF1234567890ABCDEF1234567890ABCDEF12
+Issued                  : 1/1/2024 12:00:00 AM
+Expires                 : 1/1/2025 11:59:59 PM
+PublicKeyAlgorithm      : RSA
+KeySize                 : 2048
+SignatureAlgorithm      : sha256RSA
 ```
 
 ## Common Use Cases
