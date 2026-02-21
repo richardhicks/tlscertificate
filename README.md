@@ -4,6 +4,7 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://docs.microsoft.com/en-us/powershell/)
+[![Version](https://img.shields.io/badge/Version-2.4.0-brightgreen.svg)](https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1)
 
 ## Overview
 
@@ -14,13 +15,14 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 - Retrieve TLS certificate details from any HTTPS-enabled server
 - Support for custom TCP ports (default: 443)
 - Process multiple hostnames in a single command
-- Export certificates to PEM format files
+- Export certificates to PEM format files (saved as `<hostname>.crt` in the current directory)
 - Support for both RSA and ECC (Elliptic Curve) certificates
 - Detailed certificate information including:
   - Subject and Subject Alternative Names (SANs)
   - Issuer
   - Serial Number and Thumbprint
   - Validity period (Issued/Expires dates)
+  - Enhanced Key Usage (EKU)
   - Public key algorithm and key size
   - Signature algorithm
 
@@ -78,7 +80,7 @@ cd tlscertificate
 ### Basic Syntax
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname <String[]> [-Port <Int32>] [-OutFile <String>]
+.\Get-TlsCertificate.ps1 -Hostname <String[]> [-Port <Int32>] [-OutFile]
 ```
 
 ### Parameters
@@ -87,7 +89,7 @@ cd tlscertificate
 |-----------|----------|---------|-------------|
 | `-Hostname` | Yes | - | The server name or FQDN of the target resource. Accepts multiple values. |
 | `-Port` | No | 443 | The TCP port of the target resource. |
-| `-OutFile` | No | - | Path to save the certificate in PEM format. |
+| `-OutFile` | No | - | When specified, saves the certificate to the current directory as `<hostname>.crt` in PEM format. |
 
 ## Examples
 
@@ -219,14 +221,15 @@ RD Gateway servers typically use port 443.
 **Save a certificate to a file:**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -OutFile '.\contoso-cert.crt'
+.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -OutFile
+# Creates: www.contoso.com.crt
 ```
 
-**Save certificates from multiple hosts (files are automatically numbered):**
+**Save certificates from multiple hosts (each file is named after its hostname):**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com', 'www.fabrikam.com' -OutFile '.\certificates.crt'
-# Creates: certificates1.crt, certificates2.crt
+.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com', 'www.fabrikam.com' -OutFile
+# Creates: www.contoso.com.crt, www.fabrikam.com.crt
 ```
 
 ### Pipeline Input
@@ -264,7 +267,7 @@ The script returns a custom PowerShell object with the following properties:
 | `Issued` | The date and time the certificate is valid from |
 | `Expires` | The date and time the certificate expires |
 | `AlternativeNames` | The subject alternative names (SANs) of the certificate |
-| `EnhancedKeyUsage` | The Enhanced Key Usage (EKU) object identifiers (OID) of the certificate |
+| `EnhancedKeyUsage` | The enhanced key usage (EKU) values of the certificate |
 | `PublicKeyAlgorithm` | The public key algorithm (e.g., RSA, ECC) |
 | `KeySize` | The size of the public key in bits |
 | `SignatureAlgorithm` | The signature algorithm used by the certificate |
@@ -279,7 +282,7 @@ Thumbprint              : ABCDEF1234567890ABCDEF1234567890ABCDEF12
 Issued                  : 1/1/2024 12:00:00 AM
 Expires                 : 1/1/2025 11:59:59 PM
 AlternativeNames        : {www.example.com, example.com}
-EnhancedKeyUsage        : {Server Authentication, Client Authentication}
+EnhancedKeyUsage        : {Server Authentication}
 PublicKeyAlgorithm      : RSA
 KeySize                 : 2048
 SignatureAlgorithm      : sha256RSA
@@ -365,5 +368,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/richardhicks/tlscertificate/issues) on GitHub.
-
-
