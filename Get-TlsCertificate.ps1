@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 2.3.0
+.VERSION 2.3.1
 
 .GUID 02769b70-101d-404f-bfa1-c76117641280
 
@@ -68,12 +68,13 @@
     The output of this script is a custom object that contains the following properties:
 
     Subject                 - The subject name of the certificate.
-    SubjectAlternativeNames - The subject alternative names (SANs) of the certificate.
     Issuer                  - The issuer name of the certificate.
     SerialNumber            - The serial number of the certificate.
     Thumbprint              - The thumbprint of the certificate.
     Issued                  - The date and time the certificate is valid from.
     Expires                 - The date and time the certificate expires.
+    AlternativeNames        - The subject alternative names (SANs) of the certificate.
+    EnhancedKeyUsage        - The enhanced key usage (EKU) values of the certificate.
     PublicKeyAlgorithm      - The public key algorithm used by the certificate.
     KeySize                 - The size of the public key in bits.
     SignatureAlgorithm      - The signature algorithm used by the certificate.
@@ -84,9 +85,9 @@
     https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1
 
 .NOTES
-    Version:        2.3.0
+    Version:        2.3.1
     Creation Date:  August 12, 2021
-    Last Updated:   February 18, 2026
+    Last Updated:   February 20, 2026
     Author:         Richard Hicks
     Organization:   Richard M. Hicks Consulting, Inc.
     Contact:        rich@richardhicks.com
@@ -294,16 +295,44 @@ Process {
 
             }
 
+            # Extract Enhanced Key Usage (EKU) from the certificate
+            $EnhancedKeyUsage = @()
+            $EkuExtension = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
+
+            If ($EkuExtension) {
+
+                Write-Verbose 'Extracting Enhanced Key Usage...'
+                $EkuExtensionTyped = [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$EkuExtension
+
+                ForEach ($Eku in $EkuExtensionTyped.EnhancedKeyUsages) {
+
+                    If ($Eku.FriendlyName) {
+
+                        $EnhancedKeyUsage += $Eku.FriendlyName
+
+                    }
+
+                    Else {
+
+                        $EnhancedKeyUsage += $Eku.Value
+
+                    }
+
+                }
+
+            }
+
             # Create custom object and populate with certificate properties
             $CertObject = [PSCustomObject]@{
 
                 Subject            = $Certificate.Subject
-                AlternativeNames   = $SubjectAlternativeNames
                 Issuer             = $Certificate.Issuer
                 SerialNumber       = $Certificate.SerialNumber
                 Thumbprint         = $Certificate.Thumbprint
                 Issued             = $Certificate.NotBefore
                 Expires            = $Certificate.NotAfter
+                AlternativeNames   = $SubjectAlternativeNames
+                EnhancedKeyUsage   = $EnhancedKeyUsage
                 PublicKeyAlgorithm = $Certificate.PublicKey.Oid.FriendlyName
                 KeySize            = $KeySize
                 SignatureAlgorithm = $Certificate.SignatureAlgorithm.FriendlyName
@@ -360,8 +389,8 @@ Process {
 # SIG # Begin signature block
 # MIIf2gYJKoZIhvcNAQcCoIIfyzCCH8cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCC19ol4+50aQXdO
-# 71CEDDGpWhkV6F+nFJGaRZ1t3FYYXaCCGpkwggNZMIIC36ADAgECAhAPuKdAuRWN
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAGc2nHQKHvR5WU
+# bE56AvG40v1GEghw+szn/EB9CrTZL6CCGpkwggNZMIIC36ADAgECAhAPuKdAuRWN
 # A1FDvFnZ8EApMAoGCCqGSM49BAMDMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxE
 # aWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xIDAeBgNVBAMT
 # F0RpZ2lDZXJ0IEdsb2JhbCBSb290IEczMB4XDTIxMDQyOTAwMDAwMFoXDTM2MDQy
@@ -508,24 +537,24 @@ Process {
 # YWwgRzMgQ29kZSBTaWduaW5nIEVDQyBTSEEzODQgMjAyMSBDQTECEA1KNNqGkI/A
 # Eyy8gTeTryQwDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAA
 # oQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4w
-# DAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQg4/RZD1TwQwXqX4KZVnPyzNtV
-# ynX6pzMf6wnjUE3pPxIwCwYHKoZIzj0CAQUABEcwRQIhAPLzbsE2XoEFZ6FEb03I
-# ueJwL7szX2kx7NMA15mjgvvlAiBNGF11F8P1TTtnXnMME7yifRsNY5NZex/bueOg
-# gIt506GCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
+# DAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgbRBpaJXwsvxv3/MrDYDtEPU4
+# SlZLYAU6+GOpn/KiTnEwCwYHKoZIzj0CAQUABEcwRQIgMNNDXIlm5M0ChgUZB3rG
+# FoubieEPIvlVKAGHwsP+UMgCIQDQWNzPFgppHMXwdRg4wkdK+D8+khQqpVdKK2pJ
+# i88QPKGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
 # AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
 # VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
 # EAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
-# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjAyMTkwMjQ1MThaMC8GCSqG
-# SIb3DQEJBDEiBCBDQS3my0n1fNQAa6h4wyyqA45Jj2lC1wuZGi2fhE+74TANBgkq
-# hkiG9w0BAQEFAASCAgAKxcAfc17fxU3fNvrGiNUbv4LsMpjXbMDm00kJ0jChBlU6
-# GbzERevLbhvE9xO0/cGJp9+G8+TajFvvnD1HXj+pnfs0knhnIN9YU1agXBvm4p/4
-# H1UuqpPazFG4ROJKQLOWxTa+StBmM0PDWW/HR1cfYuU2L3ojPTXHLqTUyzKTwHv1
-# /FNY8ual+lyWvWPd2/1QbvS/s/NcizVbjdm2RyAn0KylHUkdupVsDlWV3rZ4OH7j
-# 7AFB1DSwITYpFMNnpTeOXVFWxhwh4ANLou5bBlH1Z0xZK4wq1cBVBOklACcgkNec
-# yJJ1qI+mKmEzHZTqJkyPWrKX/r4LN9XK5Qy+wCPIpj/ESOThhK2xSmHv/KSzUcjg
-# t7itnRXTIH1B1sa6fIctQ32DCyTgHw1UezDC31awNsv0xfomENb9R4fbXonriVgT
-# Gy2BlpxDQ5vKsmOTlaioT9tMP8JdhHpaGU1BUiMV9NuZ7Qwt2BznIqbYPV97/KhH
-# 8den8JujtkzkL5cbAVCy+BlyzGUeX8araE8kxBtjl6gNO6oXK1Gai/T0/MPbsct0
-# Fp8yVPiuM/CukrKewz2AtO3Tt0D/Tlze6yh5dL/1f3sYwar18NBUKtlU5B7vejPr
-# bQmuERUVsDNCYqC8QImL4j9dsIcDo0fG+w1VeRW+i0p9Q2xiaapcOtfdcpGwZg==
+# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjAyMjEwMDU1MzlaMC8GCSqG
+# SIb3DQEJBDEiBCAKmiWAIb+NsOmnUl0esj3Knx+V0VcGUNk//wUkJxUGuzANBgkq
+# hkiG9w0BAQEFAASCAgCdjV5FIqiMNELv4mHVEx4znqdEhagheNSn94jNnULYnOpe
+# Rv5RP2Urwn74bd1wAxGN9cSl+tpuxZRslqNwdm/69H5Y0ywjvkflXJ7IsQplB2PS
+# Wpty5lU9DcQijWgTqnPyQVsQRGRpAcwa/NS8Wx0+9kWpCIkmL7Kdko6A2JO6leQ5
+# qfznZudR4LAgwWglLxwJtvGM1vxpCMmuuQCHuKQ37BRnxKc3FFttjXBITI+5S7ZH
+# kC0l82j5it1e7w+B8J6ouIluB/0auItxlPgwhbzjhqjnN9yANdCxpVOzBYZUigZf
+# xVWyGHXp8Sh2aHW4v1fS23yGNHrKda+cYTApXbGMdtV3uwQCair9ubDqreH84jig
+# fn5J74BPkK1USVek1PDG1j4cXFSr6z3FdZK2IBUaFXcVUVOIzlUBJ1uty4EfyQn1
+# zfxwM786y5CpKGQ20PivUXKLjzgJiR0OzSSh/IttmvHvAXT7FO3cWudZm1oK2Jk0
+# tyvR1NkJ3L/x9n+ncqYwaILjoPlb4HBkuocPGbufWo7R9XUaMLm4FbX618yCeC8j
+# WI7fVq4gUB1f74iGQWbFJGIACbEVQNvHtdKZgcmYIpXxzrB4XXImFBOTM64GfHUB
+# zAxUa0RFJqKNkd+dAEPZMeydvGDz0YVx+LM4Nr1UzqJaoOJihCzwlQ3lZETNMQ==
 # SIG # End signature block
