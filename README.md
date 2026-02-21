@@ -258,12 +258,13 @@ The script returns a custom PowerShell object with the following properties:
 | Property | Description |
 |----------|-------------|
 | `Subject` | The subject name of the certificate |
-| `SubjectAlternativeNames` | The subject alternative names (SANs) of the certificate |
 | `Issuer` | The issuer name of the certificate |
 | `SerialNumber` | The serial number of the certificate |
 | `Thumbprint` | The SHA-1 thumbprint of the certificate |
 | `Issued` | The date and time the certificate is valid from |
 | `Expires` | The date and time the certificate expires |
+| `AlternativeNames` | The subject alternative names (SANs) of the certificate |
+| `EnhancedKeyUsage` | The Enhanced Key Usage (EKU) object identifiers (OID) of the certificate |
 | `PublicKeyAlgorithm` | The public key algorithm (e.g., RSA, ECC) |
 | `KeySize` | The size of the public key in bits |
 | `SignatureAlgorithm` | The signature algorithm used by the certificate |
@@ -272,12 +273,13 @@ The script returns a custom PowerShell object with the following properties:
 
 ```
 Subject                 : CN=www.example.com
-AlternativeNames        : {www.example.com, example.com}
 Issuer                  : CN=DigiCert TLS RSA SHA256 2020 CA1, O=DigiCert Inc, C=US
 SerialNumber            : 0123456789ABCDEF0123456789ABCDEF
 Thumbprint              : ABCDEF1234567890ABCDEF1234567890ABCDEF12
 Issued                  : 1/1/2024 12:00:00 AM
 Expires                 : 1/1/2025 11:59:59 PM
+AlternativeNames        : {www.example.com, example.com}
+EnhancedKeyUsage        : {Server Authentication, Client Authentication}
 PublicKeyAlgorithm      : RSA
 KeySize                 : 2048
 SignatureAlgorithm      : sha256RSA
@@ -363,4 +365,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Support
 
 If you encounter any issues or have questions, please [open an issue](https://github.com/richardhicks/tlscertificate/issues) on GitHub.
+
 
