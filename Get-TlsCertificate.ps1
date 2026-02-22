@@ -1,25 +1,3 @@
-<#PSScriptInfo
-
-.VERSION 2.3.1
-
-.GUID 02769b70-101d-404f-bfa1-c76117641280
-
-.AUTHOR Richard Hicks
-
-.COMPANYNAME Richard M. Hicks Consulting, Inc.
-
-.COPYRIGHT Copyright (C) 2026 Richard M. Hicks Consulting, Inc. All Rights Reserved.
-
-.LICENSE Licensed under the MIT License. See LICENSE file in the project root for full license information.
-
-.LICENSEURI https://github.com/richardhicks/tlscertificate/blob/main/LICENSE
-
-.PROJECTURI https://github.com/richardhicks/tlscertificate
-
-.TAGS SSL, TLS, certificate, X509
-
-#>
-
 <#
 
 .SYNOPSIS
@@ -32,7 +10,7 @@
     The TCP port of the target resource. The default is 443.
 
 .PARAMETER OutFile
-    When this parameter is added the TLS certificate will be saved as a file in this location.
+    When specified, the TLS certificate will be saved to the current directory using the hostname as the filename with a .crt extension.
 
 .EXAMPLE
     .\Get-TlsCertificate -Hostname 'www.richardhicks.com'
@@ -50,9 +28,9 @@
     Displays the TLS certificates for the websites https://www.richardhicks.com/ and https://www.richardhicks.net/.
 
 .EXAMPLE
-    .\Get-TlsCertificate -Hostname 'www.richardhicks.com' -OutFile .\tlscert.crt
+    .\Get-TlsCertificate -Hostname 'www.richardhicks.com' -OutFile
 
-    Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate to a file named .\tlscert.crt.
+    Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate to a file named www.richardhicks.com.crt in the current directory.
 
 .DESCRIPTION
     This PowerShell script is helpful for troubleshooting TLS issues associated with public websites or other HTTPS services like TLS VPNs. Using this script, administrators can view and optionally save the certificate returned during the TLS handshake. Administrators can confirm certificate details and perform revocation checks, if necessary.
@@ -82,12 +60,15 @@
     If the OutFile parameter is specified, the certificate will be saved to a file in PEM format.
 
 .LINK
-    https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1
+    https://github.com/richardhicks/aovpntools/blob/main/Functions/Get-TlsCertificate.ps1
+
+.LINK
+    https://directaccess.richardhicks.com/
 
 .NOTES
-    Version:        2.3.1
+    Version:        2.4.0
     Creation Date:  August 12, 2021
-    Last Updated:   February 20, 2026
+    Last Updated:   February 21, 2026
     Author:         Richard Hicks
     Organization:   Richard M. Hicks Consulting, Inc.
     Contact:        rich@richardhicks.com
@@ -95,136 +76,165 @@
 
 #>
 
-[CmdletBinding()]
+Function Get-TlsCertificate {
 
-Param (
+    [CmdletBinding()]
 
-    [Parameter(Mandatory, ValueFromPipeline)]
-    [string[]]$Hostname,
-    [int]$Port = 443,
-    [string]$OutFile
+    Param (
 
-)
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [string[]]$Hostname,
+        [int]$Port = 443,
+        [switch]$OutFile
 
-Process {
+    )
 
-    $FileIndex = 1
+    Process {
 
-    ForEach ($Server in $Hostname) {
+        ForEach ($Server in $Hostname) {
 
-        # Initialize certificate object
-        $Certificate = $Null
+            # Test connectivity before proceeding
+            If (-not (Test-NetConnection -ComputerName $Server -Port $Port -InformationLevel Quiet)) {
 
-        # Create a TCP client object
-        $TcpClient = New-Object -TypeName System.Net.Sockets.TcpClient
-
-        # Connect to the remote host
-        Try {
-
-            Write-Verbose "Connecting to $Server on port $Port..."
-            Try {
-
-                $TcpClient.Connect($Server, $Port)
-
-            }
-
-            Catch {
-
-                Write-Warning "Failed to connect to $Server on port $Port."
+                Write-Warning "Unable to connect to $Server on port $Port."
                 Continue
 
             }
 
-            # Create a TCP stream object
-            $TcpStream = $TcpClient.GetStream()
+            # Initialize certificate object
+            $Certificate = $Null
 
-            # Create an SSL stream object with a validation callback
-            $Callback = {
+            # Create a TCP client object
+            $TcpClient = New-Object -TypeName System.Net.Sockets.TcpClient
 
-                Param($Source, $Cert, $Chain, [System.Net.Security.SslPolicyErrors]$Errors)
-                If ($Errors -ne [System.Net.Security.SslPolicyErrors]::None) {
+            # Connect to the remote host
+            Try {
 
-                    Write-Verbose "Ignoring certificate validation errors: $Errors"
+                Write-Verbose "Connecting to $Server on port $Port..."
+                Try {
+
+                    $TcpClient.Connect($Server, $Port)
 
                 }
 
-                $True
+                Catch {
 
-            }
+                    Write-Warning "Failed to connect to $Server on port $Port."
+                    Continue
 
-            $SslStream = New-Object -TypeName System.Net.Security.SslStream -ArgumentList @($TcpStream, $true, $Callback)
+                }
 
-            # Retrieve the TLS certificate
-            Try {
+                # Create a TCP stream object
+                $TcpStream = $TcpClient.GetStream()
 
-                Write-Verbose 'Retrieving TLS certificate...'
-                $SslStream.AuthenticateAsClient($Server)
-                $Certificate = $SslStream.RemoteCertificate
+                # Create an SSL stream object with a validation callback
+                $Callback = {
 
-            }
+                    Param($Source, $Cert, $Chain, [System.Net.Security.SslPolicyErrors]$Errors)
+                    If ($Errors -ne [System.Net.Security.SslPolicyErrors]::None) {
 
-            Catch {
+                        Write-Verbose "Ignoring certificate validation errors: $Errors"
 
-                Write-Warning "Unable to retrieve TLS certificate from $Server."
-                Continue
+                    }
+
+                    $True
+
+                }
+
+                $SslStream = New-Object -TypeName System.Net.Security.SslStream -ArgumentList @($TcpStream, $true, $Callback)
+
+                # Retrieve the TLS certificate
+                Try {
+
+                    Write-Verbose 'Retrieving TLS certificate...'
+                    $SslStream.AuthenticateAsClient($Server)
+                    $Certificate = $SslStream.RemoteCertificate
+
+                }
+
+                Catch {
+
+                    Write-Warning "Unable to retrieve TLS certificate from $Server."
+                    Continue
+
+                }
+
+                Finally {
+
+                    # Cleanup
+                    $SslStream.Dispose()
+
+                }
 
             }
 
             Finally {
 
                 # Cleanup
-                $SslStream.Dispose()
+                $TcpClient.Dispose()
 
             }
 
-        }
+            # Output certificate properties as an object
+            If ($Certificate) {
 
-        Finally {
+                If ($Certificate -IsNot [System.Security.Cryptography.X509Certificates.X509Certificate2]) {
 
-            # Cleanup
-            $TcpClient.Dispose()
+                    Write-Verbose 'Converting certificate to X509Certificate2 object...'
+                    $Certificate = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $Certificate
 
-        }
+                }
 
-        # Output certificate properties as an object
-        If ($Certificate) {
+                # Determine key size based on algorithm type
+                $KeySize = $null
 
-            If ($Certificate -IsNot [System.Security.Cryptography.X509Certificates.X509Certificate2]) {
+                # Try to get key size directly (works for RSA)
+                If ($Certificate.PublicKey.Key -and $Certificate.PublicKey.Key.KeySize) {
 
-                Write-Verbose 'Converting certificate to X509Certificate2 object...'
-                $Certificate = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $Certificate
+                    $KeySize = $Certificate.PublicKey.Key.KeySize
 
-            }
+                }
 
-            # Determine key size based on algorithm type
-            $KeySize = $null
+                # For EC certificates, need alternative approach
+                ElseIf ($Certificate.PublicKey.Oid.FriendlyName -eq 'ECC' -or $Certificate.PublicKey.Oid.Value -eq '1.2.840.10045.2.1') {
 
-            # Try to get key size directly (works for RSA)
-            If ($Certificate.PublicKey.Key -and $Certificate.PublicKey.Key.KeySize) {
+                    # Try to get from encoded parameters OID
+                    If ($Certificate.PublicKey.EncodedParameters -and $Certificate.PublicKey.EncodedParameters.Oid) {
 
-                $KeySize = $Certificate.PublicKey.Key.KeySize
+                        $Oid = $Certificate.PublicKey.EncodedParameters.Oid
+                        Switch ($Oid.Value) {
 
-            }
+                            '1.2.840.10045.3.1.7' { $KeySize = 256 }  # secp256r1 (P-256)
+                            '1.3.132.0.34' { $KeySize = 384 }         # secp384r1 (P-384)
+                            '1.3.132.0.35' { $KeySize = 521 }         # secp521r1 (P-521)
 
-            # For EC certificates, need alternative approach
-            ElseIf ($Certificate.PublicKey.Oid.FriendlyName -eq 'ECC' -or $Certificate.PublicKey.Oid.Value -eq '1.2.840.10045.2.1') {
+                            Default {
 
-                # Try to get from encoded parameters OID
-                If ($Certificate.PublicKey.EncodedParameters -and $Certificate.PublicKey.EncodedParameters.Oid) {
+                                # Try to infer from friendly name
+                                If ($Oid.FriendlyName -match '256') { $KeySize = 256 }
+                                ElseIf ($Oid.FriendlyName -match '384') { $KeySize = 384 }
+                                ElseIf ($Oid.FriendlyName -match '521') { $KeySize = 521 }
 
-                    $Oid = $Certificate.PublicKey.EncodedParameters.Oid
-                    Switch ($Oid.Value) {
+                            }
 
-                        '1.2.840.10045.3.1.7' { $KeySize = 256 }  # secp256r1 (P-256)
-                        '1.3.132.0.34' { $KeySize = 384 }         # secp384r1 (P-384)
-                        '1.3.132.0.35' { $KeySize = 521 }         # secp521r1 (P-521)
+                        }
 
-                        Default {
+                    }
 
-                            # Try to infer from friendly name
-                            If ($Oid.FriendlyName -match '256') { $KeySize = 256 }
-                            ElseIf ($Oid.FriendlyName -match '384') { $KeySize = 384 }
-                            ElseIf ($Oid.FriendlyName -match '521') { $KeySize = 521 }
+                    # If still null, try to determine from the public key data length
+                    If (-not $KeySize -and $Certificate.PublicKey.EncodedKeyValue) {
+
+                        $KeyLength = $Certificate.PublicKey.EncodedKeyValue.RawData.Length
+                        # EC public keys in uncompressed format: 0x04 + X + Y coordinates
+                        Switch ($KeyLength) {
+
+                            65 { $KeySize = 256 }   # P-256: 1 + 32 + 32
+                            97 { $KeySize = 384 }   # P-384: 1 + 48 + 48
+                            133 { $KeySize = 521 }  # P-521: 1 + 66 + 66
+                            # ASN.1 encoded versions (with header bytes)
+                            { $_ -in 67, 68, 69 } { $KeySize = 256 }
+                            { $_ -in 99, 100, 101 } { $KeySize = 384 }
+                            { $_ -in 135, 136, 137 } { $KeySize = 521 }
 
                         }
 
@@ -232,151 +242,108 @@ Process {
 
                 }
 
-                # If still null, try to determine from the public key data length
-                If (-not $KeySize -and $Certificate.PublicKey.EncodedKeyValue) {
+                # Extract Subject Alternative Names (SANs) from the certificate
+                $SubjectAlternativeNames = @()
+                $SanExtension = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
 
-                    $KeyLength = $Certificate.PublicKey.EncodedKeyValue.RawData.Length
-                    # EC public keys in uncompressed format: 0x04 + X + Y coordinates
-                    Switch ($KeyLength) {
+                If ($SanExtension) {
 
-                        65 { $KeySize = 256 }   # P-256: 1 + 32 + 32
-                        97 { $KeySize = 384 }   # P-384: 1 + 48 + 48
-                        133 { $KeySize = 521 }  # P-521: 1 + 66 + 66
-                        # ASN.1 encoded versions (with header bytes)
-                        { $_ -in 67, 68, 69 } { $KeySize = 256 }
-                        { $_ -in 99, 100, 101 } { $KeySize = 384 }
-                        { $_ -in 135, 136, 137 } { $KeySize = 521 }
+                    Write-Verbose 'Extracting Subject Alternative Names...'
+                    $SanString = $SanExtension.Format($true)
 
-                    }
+                    # Parse the formatted SAN string to extract individual entries
+                    ForEach ($Line in $SanString -split "`n") {
 
-                }
+                        $Line = $Line.Trim()
 
-            }
+                        If ($Line -match '^DNS Name=(.+)$') {
 
-            # Extract Subject Alternative Names (SANs) from the certificate
-            $SubjectAlternativeNames = @()
-            $SanExtension = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
+                            $SubjectAlternativeNames += $Matches[1].Trim()
 
-            If ($SanExtension) {
+                        }
 
-                Write-Verbose 'Extracting Subject Alternative Names...'
-                $SanString = $SanExtension.Format($true)
+                        ElseIf ($Line -match '^IP Address=(.+)$') {
 
-                # Parse the formatted SAN string to extract individual entries
-                ForEach ($Line in $SanString -split "`n") {
+                            $SubjectAlternativeNames += $Matches[1].Trim()
 
-                    $Line = $Line.Trim()
+                        }
 
-                    If ($Line -match '^DNS Name=(.+)$') {
+                        ElseIf ($Line -match '^RFC822 Name=(.+)$') {
 
-                        $SubjectAlternativeNames += $Matches[1].Trim()
+                            $SubjectAlternativeNames += $Matches[1].Trim()
 
-                    }
+                        }
 
-                    ElseIf ($Line -match '^IP Address=(.+)$') {
+                        ElseIf ($Line -match '^URL=(.+)$') {
 
-                        $SubjectAlternativeNames += $Matches[1].Trim()
+                            $SubjectAlternativeNames += $Matches[1].Trim()
 
-                    }
-
-                    ElseIf ($Line -match '^RFC822 Name=(.+)$') {
-
-                        $SubjectAlternativeNames += $Matches[1].Trim()
-
-                    }
-
-                    ElseIf ($Line -match '^URL=(.+)$') {
-
-                        $SubjectAlternativeNames += $Matches[1].Trim()
+                        }
 
                     }
 
                 }
 
-            }
+                # Extract Enhanced Key Usage (EKU) from the certificate
+                $EnhancedKeyUsage = @()
+                $EkuExtension = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
 
-            # Extract Enhanced Key Usage (EKU) from the certificate
-            $EnhancedKeyUsage = @()
-            $EkuExtension = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
+                If ($EkuExtension) {
 
-            If ($EkuExtension) {
+                    Write-Verbose 'Extracting Enhanced Key Usage...'
+                    $EkuExtensionTyped = [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$EkuExtension
 
-                Write-Verbose 'Extracting Enhanced Key Usage...'
-                $EkuExtensionTyped = [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$EkuExtension
+                    ForEach ($Eku in $EkuExtensionTyped.EnhancedKeyUsages) {
 
-                ForEach ($Eku in $EkuExtensionTyped.EnhancedKeyUsages) {
+                        If ($Eku.FriendlyName) {
 
-                    If ($Eku.FriendlyName) {
+                            $EnhancedKeyUsage += $Eku.FriendlyName
 
-                        $EnhancedKeyUsage += $Eku.FriendlyName
+                        }
 
-                    }
+                        Else {
 
-                    Else {
+                            $EnhancedKeyUsage += $Eku.Value
 
-                        $EnhancedKeyUsage += $Eku.Value
+                        }
 
                     }
 
                 }
 
-            }
+                # Create custom object and populate with certificate properties
+                $CertObject = [PSCustomObject]@{
 
-            # Create custom object and populate with certificate properties
-            $CertObject = [PSCustomObject]@{
-
-                Subject            = $Certificate.Subject
-                Issuer             = $Certificate.Issuer
-                SerialNumber       = $Certificate.SerialNumber
-                Thumbprint         = $Certificate.Thumbprint
-                Issued             = $Certificate.NotBefore
-                Expires            = $Certificate.NotAfter
-                AlternativeNames   = $SubjectAlternativeNames
-                EnhancedKeyUsage   = $EnhancedKeyUsage
-                PublicKeyAlgorithm = $Certificate.PublicKey.Oid.FriendlyName
-                KeySize            = $KeySize
-                SignatureAlgorithm = $Certificate.SignatureAlgorithm.FriendlyName
-
-            }
-
-            # Output certificate details
-            $CertObject
-
-            # Save certificate to file if OutFile is specified
-            If ($OutFile) {
-
-                $CurrentOutFile = $OutFile
-
-                # If processing multiple host names, append an index to the file name
-                If ($Hostname.Count -gt 1) {
-
-                    $FileExtension = [System.IO.Path]::GetExtension($OutFile)
-                    $FileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($OutFile)
-                    $Directory = [System.IO.Path]::GetDirectoryName($OutFile)
-
-                    If (-Not [string]::IsNullOrWhiteSpace($Directory)) {
-
-                        $CurrentOutFile = Join-Path $Directory "$FileNameWithoutExtension$FileIndex$FileExtension"
-
-                    }
-
-                    Else {
-
-                        $CurrentOutFile = "$FileNameWithoutExtension$FileIndex$FileExtension"
-
-                    }
-
-                    $FileIndex++
+                    Subject            = $Certificate.Subject
+                    Issuer             = $Certificate.Issuer
+                    SerialNumber       = $Certificate.SerialNumber
+                    Thumbprint         = $Certificate.Thumbprint
+                    Issued             = $Certificate.NotBefore
+                    Expires            = $Certificate.NotAfter
+                    AlternativeNames   = $SubjectAlternativeNames
+                    EnhancedKeyUsage   = $EnhancedKeyUsage
+                    PublicKeyAlgorithm = $Certificate.PublicKey.Oid.FriendlyName
+                    KeySize            = $KeySize
+                    SignatureAlgorithm = $Certificate.SignatureAlgorithm.FriendlyName
 
                 }
 
-                Write-Verbose "Saving certificate to $CurrentOutFile..."
-                $CertOut = New-Object System.Text.StringBuilder
-                [void]($CertOut.AppendLine("-----BEGIN CERTIFICATE-----"))
-                [void]($CertOut.AppendLine([System.Convert]::ToBase64String($Certificate.RawData, 1)))
-                [void]($CertOut.AppendLine("-----END CERTIFICATE-----"))
-                [void]($CertOut.ToString() | Out-File $CurrentOutFile -Encoding ascii -Force)
-                Write-Output "Certificate saved to $CurrentOutFile."
+                # Output certificate details
+                $CertObject
+
+                # Save certificate to file if OutFile is specified
+                If ($OutFile) {
+
+                    $CurrentOutFile = "$Server.crt"
+                    Write-Verbose "Saving certificate to $CurrentOutFile..."
+                    $CertOut = New-Object System.Text.StringBuilder
+                    [void]($CertOut.AppendLine("-----BEGIN CERTIFICATE-----"))
+                    [void]($CertOut.AppendLine([System.Convert]::ToBase64String($Certificate.RawData, 1)))
+                    [void]($CertOut.AppendLine("-----END CERTIFICATE-----"))
+                    [void]($CertOut.ToString() | Out-File $CurrentOutFile -Encoding ascii -Force)
+                    Write-Output "Certificate saved to $((Resolve-Path $CurrentOutFile).Path)."
+
+                }
 
             }
 
@@ -387,10 +354,10 @@ Process {
 }
 
 # SIG # Begin signature block
-# MIIf2gYJKoZIhvcNAQcCoIIfyzCCH8cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
+# MIIf2wYJKoZIhvcNAQcCoIIfzDCCH8gCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAGc2nHQKHvR5WU
-# bE56AvG40v1GEghw+szn/EB9CrTZL6CCGpkwggNZMIIC36ADAgECAhAPuKdAuRWN
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAzZtPuk8VHTV9d
+# zYl2YUh97pRxmZwwRpNJqt3wuKzEoKCCGpkwggNZMIIC36ADAgECAhAPuKdAuRWN
 # A1FDvFnZ8EApMAoGCCqGSM49BAMDMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxE
 # aWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xIDAeBgNVBAMT
 # F0RpZ2lDZXJ0IEdsb2JhbCBSb290IEczMB4XDTIxMDQyOTAwMDAwMFoXDTM2MDQy
@@ -532,29 +499,29 @@ Process {
 # roancJIFcbojBcxlRcGG0LIhp6GvReQGgMgYxQbV1S3CrWqZzBt1R9xJgKf47Cdx
 # VRd/ndUlQ05oxYy2zRWVFjF7mcr4C34Mj3ocCVccAvlKV9jEnstrniLvUxxVZE/r
 # ptb7IRE2lskKPIJgbaP5t2nGj/ULLi49xTcBZU8atufk+EMF/cWuiC7POGT75qaL
-# 6vdCvHlshtjdNXOCIUjsarfNZzGCBJcwggSTAgEBMHgwZDELMAkGA1UEBhMCVVMx
+# 6vdCvHlshtjdNXOCIUjsarfNZzGCBJgwggSUAgEBMHgwZDELMAkGA1UEBhMCVVMx
 # FzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTwwOgYDVQQDEzNEaWdpQ2VydCBHbG9i
 # YWwgRzMgQ29kZSBTaWduaW5nIEVDQyBTSEEzODQgMjAyMSBDQTECEA1KNNqGkI/A
 # Eyy8gTeTryQwDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAA
 # oQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4w
-# DAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgbRBpaJXwsvxv3/MrDYDtEPU4
-# SlZLYAU6+GOpn/KiTnEwCwYHKoZIzj0CAQUABEcwRQIgMNNDXIlm5M0ChgUZB3rG
-# FoubieEPIvlVKAGHwsP+UMgCIQDQWNzPFgppHMXwdRg4wkdK+D8+khQqpVdKK2pJ
-# i88QPKGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
-# AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
-# VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
-# EAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
-# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjAyMjEwMDU1MzlaMC8GCSqG
-# SIb3DQEJBDEiBCAKmiWAIb+NsOmnUl0esj3Knx+V0VcGUNk//wUkJxUGuzANBgkq
-# hkiG9w0BAQEFAASCAgCdjV5FIqiMNELv4mHVEx4znqdEhagheNSn94jNnULYnOpe
-# Rv5RP2Urwn74bd1wAxGN9cSl+tpuxZRslqNwdm/69H5Y0ywjvkflXJ7IsQplB2PS
-# Wpty5lU9DcQijWgTqnPyQVsQRGRpAcwa/NS8Wx0+9kWpCIkmL7Kdko6A2JO6leQ5
-# qfznZudR4LAgwWglLxwJtvGM1vxpCMmuuQCHuKQ37BRnxKc3FFttjXBITI+5S7ZH
-# kC0l82j5it1e7w+B8J6ouIluB/0auItxlPgwhbzjhqjnN9yANdCxpVOzBYZUigZf
-# xVWyGHXp8Sh2aHW4v1fS23yGNHrKda+cYTApXbGMdtV3uwQCair9ubDqreH84jig
-# fn5J74BPkK1USVek1PDG1j4cXFSr6z3FdZK2IBUaFXcVUVOIzlUBJ1uty4EfyQn1
-# zfxwM786y5CpKGQ20PivUXKLjzgJiR0OzSSh/IttmvHvAXT7FO3cWudZm1oK2Jk0
-# tyvR1NkJ3L/x9n+ncqYwaILjoPlb4HBkuocPGbufWo7R9XUaMLm4FbX618yCeC8j
-# WI7fVq4gUB1f74iGQWbFJGIACbEVQNvHtdKZgcmYIpXxzrB4XXImFBOTM64GfHUB
-# zAxUa0RFJqKNkd+dAEPZMeydvGDz0YVx+LM4Nr1UzqJaoOJihCzwlQ3lZETNMQ==
+# DAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQg2jobCTHg8cRBvUX4pOWHLNJY
+# 70p8Rjp/BPLBFXdmW/4wCwYHKoZIzj0CAQUABEgwRgIhAPXMKK2KC3nnC69DlwbV
+# D+xjea0pZ3nHKSxn7v35AyqFAiEA8C3Bi8oiJ4MN6gos490bwUdKzJzMNlXtzOA3
+# PXUxD9WhggMmMIIDIgYJKoZIhvcNAQkGMYIDEzCCAw8CAQEwfTBpMQswCQYDVQQG
+# EwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xQTA/BgNVBAMTOERpZ2lDZXJ0
+# IFRydXN0ZWQgRzQgVGltZVN0YW1waW5nIFJTQTQwOTYgU0hBMjU2IDIwMjUgQ0Ex
+# AhAKgO8YS43xBYLRxHanlXRoMA0GCWCGSAFlAwQCAQUAoGkwGAYJKoZIhvcNAQkD
+# MQsGCSqGSIb3DQEHATAcBgkqhkiG9w0BCQUxDxcNMjYwMjIxMjIzOTAwWjAvBgkq
+# hkiG9w0BCQQxIgQg+xl0Mt0QlmkxlFkb5Vd/2c+BvA0YAhQCXDSZmpAGDoowDQYJ
+# KoZIhvcNAQEBBQAEggIAgykmxURrHUixs9Ci9J8TUO0fFeQ7FXiiJ98TGjnb186H
+# lrxAhn+iPMLgOjiPoP9kdvSmN7n8Nux2n9iMdRnNLMx9xBryUlDpTcUIvW3QKdx3
+# RsNv+/VNB9Op14pa+LgPTIRTaQ+oCdHvCdTcnngY85GIhqdPwkeIjpXijXAt/aL3
+# h1shajWzc3FVx1qAevpFn5UhQqj4Spit9OjT19OVWMfpASYDIl2nkDmsdLe5mgMn
+# lOuKS+/DkgAIh51zEKWmSxNwPq8SZvZMNzddwi99G9L/sIQssQnimtM7lSMDBCeC
+# yMJs2rgi3hoTxVnitFkhvTcYWAxM/X5R2gMkF/TRc2h2meu+VHWXrD+X4e/X9I4f
+# VOyED4etws1aVBTJYkNONx+eDeucgYFXmUt97hyazlK6a+SuqfQeqkDkwRWGKdkC
+# MiBvYjK0jTJ0aRyPVt3Iq/hRyfaraqPfm4PthI8kX2wcTNwxZcQRmirBXQe7h6LT
+# cann1Njd7GjC2du6iY+Cr0xgpvRmCqaWB3Gsy0vEmmlf6yYQmE8IsYk4IpMosuBP
+# /jkfU/GoDxtDBpEX3hzeQ4P83qlginDD47jNt10Js0m38iYCE/0yrG4AY3qDectV
+# xpwJOt5LHnCPwCxLxFMpC7BVYUcbwlc4iv0xyo2CRnZMxFsvUnGn3I43spwPi+0=
 # SIG # End signature block
