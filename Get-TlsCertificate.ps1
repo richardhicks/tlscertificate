@@ -1,6 +1,6 @@
-<#PSScriptInfo
+﻿<#PSScriptInfo
 
-.VERSION 2.5.1
+.VERSION 2.6.0
 
 .GUID 02769b70-101d-404f-bfa1-c76117641280
 
@@ -37,6 +37,12 @@
 .PARAMETER FilePath
     When specified along with -OutFile, overrides the default filename and path used to save the certificate. Accepts a full or relative path including filename (e.g., C:\Certs\mycert.crt).
 
+.PARAMETER IncludeChain
+    When specified along with -OutFile, saves the TLS certificate and any intermediate CA certificates to a single file in PEM format. The self-signed root CA certificate is excluded. If -IncludeFullChain is also specified, it takes precedence and the root CA certificate is included.
+
+.PARAMETER IncludeFullChain
+    When specified along with -OutFile, saves the TLS certificate, any intermediate CA certificates, and the root CA certificate to a single file in PEM format. Takes precedence over -IncludeChain if both are specified.
+
 .EXAMPLE
     .\Get-TlsCertificate -Hostname 'www.richardhicks.com'
 
@@ -61,6 +67,16 @@
     .\Get-TlsCertificate -Hostname 'www.richardhicks.com' -OutFile -FilePath 'C:\Certs\richardhicks.crt'
 
     Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate to C:\Certs\richardhicks.crt.
+
+.EXAMPLE
+    .\Get-TlsCertificate -Hostname 'www.richardhicks.com' -OutFile -IncludeChain
+
+    Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate and any intermediate CA certificates to a file named www.richardhicks.com-chain.pem in the current directory.
+
+.EXAMPLE
+    .\Get-TlsCertificate -Hostname 'www.richardhicks.com' -OutFile -IncludeFullChain
+
+    Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate, any intermediate CA certificates, and the root CA certificate to a file named www.richardhicks.com-fullchain.pem in the current directory.
 
 .DESCRIPTION
     This PowerShell script is helpful for troubleshooting TLS issues associated with public websites or other HTTPS services like TLS VPNs. Using this script, administrators can view and optionally save the certificate returned during the TLS handshake. Administrators can confirm certificate details and perform revocation checks, if necessary.
@@ -88,15 +104,15 @@
     KeySize                 - The size of the public key in bits.
     SignatureAlgorithm      - The signature algorithm used by the certificate.
 
-    If the OutFile parameter is specified, the certificate will be saved to a file in PEM format.
+    If the OutFile parameter is specified, the certificate will be saved to a file in PEM format. When the IncludeChain or IncludeFullChain parameter is also specified, the certificate chain is saved as concatenated PEM blocks in a single file.
 
 .LINK
     https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1
 
 .NOTES
-    Version:        2.5.1
+    Version:        2.6.0
     Creation Date:  August 12, 2021
-    Last Updated:   May 27, 2026
+    Last Updated:   July 31, 2026
     Author:         Richard Hicks
     Organization:   Richard M. Hicks Consulting, Inc.
     Contact:        rich@richardhicks.com
@@ -113,7 +129,9 @@ Param (
     [string[]]$Hostname,
     [int]$Port = 443,
     [switch]$OutFile,
-    [string]$FilePath
+    [string]$FilePath,
+    [switch]$IncludeChain,
+    [switch]$IncludeFullChain
 
 )
 
@@ -155,6 +173,9 @@ Process {
             # Create a TCP stream object
             $TcpStream = $TcpClient.GetStream()
 
+            # Collection to capture the certificate chain presented during the TLS handshake
+            $ChainCertificates = New-Object -TypeName 'System.Collections.Generic.List[System.Security.Cryptography.X509Certificates.X509Certificate2]'
+
             # Create an SSL stream object with a validation callback
             $Callback = {
 
@@ -162,6 +183,13 @@ Process {
                 If ($Errors -ne [System.Net.Security.SslPolicyErrors]::None) {
 
                     Write-Verbose "Ignoring certificate validation errors: $Errors"
+
+                }
+
+                # Capture a copy of each certificate in the chain. Copies are required because the chain object is disposed after the handshake completes.
+                ForEach ($Element in $Chain.ChainElements) {
+
+                    $ChainCertificates.Add((New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList (, $Element.Certificate.RawData)))
 
                 }
 
@@ -368,7 +396,16 @@ Process {
             # Save certificate to file if OutFile is specified
             If ($OutFile) {
 
-                $CurrentOutFile = If ($FilePath) { $FilePath } Else { "$Server.crt" }
+                # IncludeFullChain takes precedence if both chain switches are specified
+                If ($IncludeChain -and $IncludeFullChain) {
+
+                    Write-Verbose 'Both -IncludeChain and -IncludeFullChain were specified. -IncludeFullChain takes precedence.'
+
+                }
+
+                # Determine default filename based on chain switches
+                $DefaultFileName = If ($IncludeFullChain) { "$Server-fullchain.pem" } ElseIf ($IncludeChain) { "$Server-chain.pem" } Else { "$Server.crt" }
+                $CurrentOutFile = If ($FilePath) { $FilePath } Else { $DefaultFileName }
                 $ValidPath = $true
 
                 If ($FilePath) {
@@ -386,11 +423,44 @@ Process {
 
                 If ($ValidPath) {
 
-                    Write-Verbose "Saving certificate to $CurrentOutFile..."
+                    # Determine which certificates to export
+                    If (($IncludeChain -or $IncludeFullChain) -and $ChainCertificates.Count -gt 0) {
+
+                        Write-Verbose "Saving certificate chain to $CurrentOutFile..."
+
+                        If ($IncludeFullChain) {
+
+                            # Include all certificates in the chain, including the root CA certificate
+                            $CertsToExport = $ChainCertificates
+
+                        }
+
+                        Else {
+
+                            # Exclude the self-signed root CA certificate from the chain
+                            $CertsToExport = $ChainCertificates | Where-Object { $_.Subject -ne $_.Issuer }
+
+                        }
+
+                    }
+
+                    Else {
+
+                        Write-Verbose "Saving certificate to $CurrentOutFile..."
+                        $CertsToExport = @($Certificate)
+
+                    }
+
                     $CertOut = New-Object System.Text.StringBuilder
-                    [void]($CertOut.AppendLine("-----BEGIN CERTIFICATE-----"))
-                    [void]($CertOut.AppendLine([System.Convert]::ToBase64String($Certificate.RawData, 1)))
-                    [void]($CertOut.AppendLine("-----END CERTIFICATE-----"))
+
+                    ForEach ($ExportCert in $CertsToExport) {
+
+                        [void]($CertOut.AppendLine("-----BEGIN CERTIFICATE-----"))
+                        [void]($CertOut.AppendLine([System.Convert]::ToBase64String($ExportCert.RawData, 1)))
+                        [void]($CertOut.AppendLine("-----END CERTIFICATE-----"))
+
+                    }
+
                     [void]($CertOut.ToString() | Out-File $CurrentOutFile -Encoding ascii -Force)
                     Write-Output "Certificate saved to $((Resolve-Path $CurrentOutFile).Path)."
 
@@ -405,10 +475,10 @@ Process {
 }
 
 # SIG # Begin signature block
-# MIIk7AYJKoZIhvcNAQcCoIIk3TCCJNkCAQExDzANBglghkgBZQMEAgEFADB5Bgor
+# MIIk6wYJKoZIhvcNAQcCoIIk3DCCJNgCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCm89oV+bnnTWjG
-# PGoK1PsClz/090YMjyAg9i1KEHTV/aCCH6YwggWNMIIEdaADAgECAhAOmxiO+dAt
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAkt7Cj7DoA0g07
+# NAhBJqpVdUpq2B3WXlLnm5NqOTFkraCCH6YwggWNMIIEdaADAgECAhAOmxiO+dAt
 # 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
 # BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
@@ -577,29 +647,29 @@ Process {
 # cJIFcbojBcxlRcGG0LIhp6GvReQGgMgYxQbV1S3CrWqZzBt1R9xJgKf47CdxVRd/
 # ndUlQ05oxYy2zRWVFjF7mcr4C34Mj3ocCVccAvlKV9jEnstrniLvUxxVZE/rptb7
 # IRE2lskKPIJgbaP5t2nGj/ULLi49xTcBZU8atufk+EMF/cWuiC7POGT75qaL6vdC
-# vHlshtjdNXOCIUjsarfNZzGCBJwwggSYAgEBMH0waTELMAkGA1UEBhMCVVMxFzAV
+# vHlshtjdNXOCIUjsarfNZzGCBJswggSXAgEBMH0waTELMAkGA1UEBhMCVVMxFzAV
 # BgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMUEwPwYDVQQDEzhEaWdpQ2VydCBUcnVzdGVk
 # IEc0IENvZGUgU2lnbmluZyBSU0E0MDk2IFNIQTM4NCAyMDIxIENBMQIQDsYrSCrm
 # UJuvTRscProh/zANBglghkgBZQMEAgEFAKCBhDAYBgorBgEEAYI3AgEMMQowCKAC
 # gAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3AgEEMBwGCisGAQQBgjcCAQsx
-# DjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCBj+ktEv2uVUb2/1maaTabs
-# Jv70uYDY6xKEVgoxCC1fPjALBgcqhkjOPQIBBQAERzBFAiBFuWVd3lPT5X89MLbS
-# rsMjAUX8AAl0nUkQY4rB2X9QAAIhAIncclahY/lLhz3LYhrxN0zHsdx7QiXp04k0
-# xyzRdBkyoYIDJjCCAyIGCSqGSIb3DQEJBjGCAxMwggMPAgEBMH0waTELMAkGA1UE
-# BhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMUEwPwYDVQQDEzhEaWdpQ2Vy
-# dCBUcnVzdGVkIEc0IFRpbWVTdGFtcGluZyBSU0E0MDk2IFNIQTI1NiAyMDI1IENB
-# MQIQCoDvGEuN8QWC0cR2p5V0aDANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJ
-# AzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI2MDUyNzIzMjkyNlowLwYJ
-# KoZIhvcNAQkEMSIEIHTc/nTN5uo8U9EvsoDSWan6cajd8SXardNts5wK3RBuMA0G
-# CSqGSIb3DQEBAQUABIICAIGN47flVb38dhW5HNfILFHlEIrkuBuFW+YUQDN9OTPK
-# UocjY9AqHqcXruZls5rZ5mhBjewsUDfwKzRNfMTFuHM6525tiFUmbFQ8IrbrY2di
-# w50SZd80sOZgnxNoZ+j0jzBeDW6vORnKFKMUBR6oCtj6iiqbwtx+JKsY18jap42o
-# yoFCoNP/Vv2SCgZTzJMhHefQWEQwyAHpBPhpGVcCaq48QIAEUVuoYZzjVEij2CE9
-# uzXZ0yb3nPZDcsUadwHoGUrEysjgSEO0y0lspI/+dBq8CybmgHEbILsA8VnaZQ25
-# vrgPcgfX4c6PDOLkYu4XGu6yGJMVxt0CNzt8bHq2MkCRp4deL16ldVVSBvKG9pzp
-# lvLUuMNXoo06pDQtrjgk1Dk7K1nt/IygEmuIv7dkmOBQN9Az9MbPUgI+2RO67O/r
-# 17Im9WC4AwokFnI7ZGTpOrSvtRHpzBczbK3tem/enlheW2Dpt5TouLP50o4DuwrZ
-# tYAe84nzqC/Q8sxTHrbRMpXRlChitYbRSlmAErrSYa6Mpj75hDABP9gGmi2SUhS2
-# Uk7X8FIbe2i/PHOwggJijI4aKorCJz3scNc8BfHDVB/G8TtZDh6ueUR3fdCiv3e0
-# J1EjFGTp7VcW3/K6EJQRgQl3GGYXacFJuqKTlP71I9G3YmPzSJ93i+9jhjm5ShsX
+# DjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCDvzAGwpbrVN0PmmEoP+NdD
+# G1LcKGiTcj+ZNu7Qa+5oczALBgcqhkjOPQIBBQAERjBEAiBXvALRYdFxbcZtFSjc
+# Tka8YzfB6y1QzvAc+DGpGuKeTgIgElRXjEU2IM4gpABQLN05WdytFwSl36p16wW+
+# WY/9r9qhggMmMIIDIgYJKoZIhvcNAQkGMYIDEzCCAw8CAQEwfTBpMQswCQYDVQQG
+# EwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xQTA/BgNVBAMTOERpZ2lDZXJ0
+# IFRydXN0ZWQgRzQgVGltZVN0YW1waW5nIFJTQTQwOTYgU0hBMjU2IDIwMjUgQ0Ex
+# AhAKgO8YS43xBYLRxHanlXRoMA0GCWCGSAFlAwQCAQUAoGkwGAYJKoZIhvcNAQkD
+# MQsGCSqGSIb3DQEHATAcBgkqhkiG9w0BCQUxDxcNMjYwNzMxMTk1NzU0WjAvBgkq
+# hkiG9w0BCQQxIgQgZr4aSsGp8N9i8eeZtZIgmS/spEUteX8NbHhqyZKKgBAwDQYJ
+# KoZIhvcNAQEBBQAEggIAz5aCkZjCvD2D2AooJzOJfUOgmMUtgX1Qb1TAFLpZcQDN
+# zye4j86tUbbt7Lh/LQTd4ipCrEHY5LggYJ9qw/tQshorat/fRk7Nv8qAgG6uWcim
+# EDpNKTIT1rjDcJYDGtvNDWjXjMqrHKQuG/zMtX+Im9OceIxO1/hAJOU4o6RbO0O2
+# ZOE6ITmwDb4q/YBXyFbjVePTjoG8sp6MIf+1puqFotzuAqvaZ2iknVfsc6ua3MzK
+# LZ8g0VUXgbPHnxKkyhSCCPAVxEpzP9dBF/rm5IrsFaEQdemz9nN/zLkbjgSohRiO
+# hbUguu4k6cYDOSO4QQ02G2KRDYZmn/udUMVC3G6xkGMG0JGL8Mc03M69Outu/rNt
+# Q/j5h2IzSUhl61/kA8T8Cx+nlFunTHYRF355ZQU6XCXfLuG4FZt6+Fvgtjz6iLrJ
+# iu7SxHUoA/+ApPYhh8hWTjn03cTrMQV+M369EaVCwJQPvaHkez6HtslC5aYrefli
+# GIGIIO+DNQuwDj/bcOz/n0FFuvcjyzDjXL8POpFP82rcUdZa5nGfsdzvaqOBIc3r
+# kSKz8xcHlvGw6QXqL7exu3OglbX3U9zelGDzxHtuU/vT6TB/cqi4GoFP4Krvw+q3
+# kGDoT6XpEhs7N7/9OF3qT8tabF/XgvE9HZOa4FnzBuJtfWjhq0noqGV7lJ7vCjo=
 # SIG # End signature block

@@ -4,7 +4,7 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://docs.microsoft.com/en-us/powershell/)
-[![Version](https://img.shields.io/badge/Version-2.5.1-brightgreen.svg)](https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1)
+[![Version](https://img.shields.io/badge/Version-2.6.0-brightgreen.svg)](https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1)
 
 ## Overview
 
@@ -16,6 +16,7 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 - Support for custom TCP ports (default: 443)
 - Process multiple hostnames in a single command
 - Export certificates to PEM format files (saved as `<hostname>.crt` in the current directory, or to a custom path using `-FilePath`)
+- Export the full certificate chain to a single PEM file, with or without the root CA certificate (`-IncludeChain` and `-IncludeFullChain`)
 - Support for both RSA and ECC (Elliptic Curve) certificates
 - Detailed certificate information including:
   - Subject and Subject Alternative Names (SANs)
@@ -80,7 +81,7 @@ cd tlscertificate
 ### Basic Syntax
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname <String[]> [-Port <Int32>] [-OutFile] [-FilePath <String>]
+.\Get-TlsCertificate.ps1 -Hostname <String[]> [-Port <Int32>] [-OutFile] [-FilePath <String>] [-IncludeChain] [-IncludeFullChain]
 ```
 
 ### Parameters
@@ -90,7 +91,9 @@ cd tlscertificate
 | `-Hostname` | Yes | - | The server name or FQDN of the target resource. Accepts multiple values. |
 | `-Port` | No | 443 | The TCP port of the target resource. |
 | `-OutFile` | No | - | When specified, saves the certificate to the current directory as `<hostname>.crt` in PEM format. |
-| `-FilePath` | No | - | Specifies a custom filename and path for the exported certificate file. Overrides the default `<hostname>.crt` naming when saving a certificate. |
+| `-FilePath` | No | - | When specified along with `-OutFile`, overrides the default filename and path used to save the certificate. Accepts a full or relative path including filename (e.g., `C:\Certs\mycert.crt`). |
+| `-IncludeChain` | No | - | When specified along with `-OutFile`, saves the TLS certificate and any intermediate CA certificates to a single PEM file (default filename `<hostname>-chain.pem`). The self-signed root CA certificate is excluded. |
+| `-IncludeFullChain` | No | - | When specified along with `-OutFile`, saves the TLS certificate, any intermediate CA certificates, and the root CA certificate to a single PEM file (default filename `<hostname>-fullchain.pem`). Takes precedence over `-IncludeChain` if both are specified. |
 
 ## Examples
 
@@ -136,6 +139,15 @@ LDAPS (LDAP over SSL) typically runs on port 636.
 $DomainControllers = 'dc01.contoso.com', 'dc02.contoso.com', 'dc03.contoso.com'
 .\Get-TlsCertificate.ps1 -Hostname $DomainControllers -Port 636
 ```
+
+**Export a domain controller's certificate chain for use on non-Windows clients:**
+
+```powershell
+.\Get-TlsCertificate.ps1 -Hostname 'dc01.contoso.com' -Port 636 -OutFile -IncludeFullChain
+# Creates: dc01.contoso.com-fullchain.pem
+```
+
+This is particularly useful when configuring LDAPS trust on non-Windows platforms, which typically require the complete certificate chain in PEM format. See [Saving Certificate Chains](#saving-certificate-chains) for details.
 
 ### Remote Desktop Gateway Servers
 
@@ -236,16 +248,43 @@ RD Gateway servers typically use port 443.
 **Save a certificate to a custom filename and path:**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -FilePath 'C:\Certs\contoso-web.crt'
+.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -OutFile -FilePath 'C:\Certs\contoso-web.crt'
 # Creates: C:\Certs\contoso-web.crt
 ```
 
 **Save a certificate to a specific directory with a descriptive name:**
 
 ```powershell
-.\Get-TlsCertificate.ps1 -Hostname 'vpn.contoso.com' -FilePath 'C:\Certs\VPN\vpn-contoso-2026.crt'
+.\Get-TlsCertificate.ps1 -Hostname 'vpn.contoso.com' -OutFile -FilePath 'C:\Certs\VPN\vpn-contoso-2026.crt'
 # Creates: C:\Certs\VPN\vpn-contoso-2026.crt
 ```
+
+### Saving Certificate Chains
+
+**Save a certificate and its intermediate CA certificates to a single PEM file:**
+
+```powershell
+.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -OutFile -IncludeChain
+# Creates: www.contoso.com-chain.pem
+```
+
+**Save the full certificate chain, including the root CA certificate:**
+
+```powershell
+.\Get-TlsCertificate.ps1 -Hostname 'www.contoso.com' -OutFile -IncludeFullChain
+# Creates: www.contoso.com-fullchain.pem
+```
+
+**Save the full chain to a custom filename and path:**
+
+```powershell
+.\Get-TlsCertificate.ps1 -Hostname 'dc01.contoso.com' -Port 636 -OutFile -IncludeFullChain -FilePath 'C:\Certs\dc01-fullchain.pem'
+# Creates: C:\Certs\dc01-fullchain.pem
+```
+
+> **Tip:** The `-IncludeChain` and `-IncludeFullChain` parameters are especially helpful when configuring certificates on non-Windows platforms for services such as LDAPS. Many Linux and appliance-based clients and applications (e.g., OpenLDAP, VMware vCenter, network devices) require the complete certificate chain in a single PEM file to establish trust with Active Directory domain controllers over LDAPS.
+
+> **Note:** If both `-IncludeChain` and `-IncludeFullChain` are specified, `-IncludeFullChain` takes precedence and the root CA certificate is included.
 
 ### Pipeline Input
 
@@ -287,6 +326,8 @@ The script returns a custom PowerShell object with the following properties:
 | `PublicKeyAlgorithm` | The public key algorithm (e.g., RSA, ECC) |
 | `KeySize` | The size of the public key in bits |
 | `SignatureAlgorithm` | The signature algorithm used by the certificate |
+
+When the `-OutFile` parameter is specified, the certificate is saved to a file in PEM format. When `-IncludeChain` or `-IncludeFullChain` is also specified, the certificate chain is saved as concatenated PEM blocks in a single file.
 
 ### Example Output
 
