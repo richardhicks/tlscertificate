@@ -1,6 +1,6 @@
 ﻿<#PSScriptInfo
 
-.VERSION 2.6.0
+.VERSION 2.7.0
 
 .GUID 02769b70-101d-404f-bfa1-c76117641280
 
@@ -79,7 +79,7 @@
     Displays the TLS certificate for the website https://www.richardhicks.com/ and saves the certificate, any intermediate CA certificates, and the root CA certificate to a file named www.richardhicks.com-fullchain.pem in the current directory.
 
 .DESCRIPTION
-    This PowerShell script is helpful for troubleshooting TLS issues associated with public websites or other HTTPS services like TLS VPNs. Using this script, administrators can view and optionally save the certificate returned during the TLS handshake. Administrators can confirm certificate details and perform revocation checks, if necessary.
+    This PowerShell script is helpful for troubleshooting TLS issues associated with public websites or other HTTPS services like TLS VPNs. Using this script, administrators can view and optionally save the certificate returned during the TLS handshake. Administrators can confirm certificate details and perform revocation checks, if necessary. The script also reports the TLS protocol version and cipher suite negotiated for the session. Note that the reported TLS version is the highest version mutually supported by the remote host and the local operating system, not a complete list of protocol versions the remote host supports.
 
 .INPUTS
     String[]]
@@ -103,6 +103,8 @@
     PublicKeyAlgorithm      - The public key algorithm used by the certificate.
     KeySize                 - The size of the public key in bits.
     SignatureAlgorithm      - The signature algorithm used by the certificate.
+    TlsVersion              - The TLS protocol version negotiated for the session.
+    CipherSuite             - The cipher suite negotiated for the session.
 
     If the OutFile parameter is specified, the certificate will be saved to a file in PEM format. When the IncludeChain or IncludeFullChain parameter is also specified, the certificate chain is saved as concatenated PEM blocks in a single file.
 
@@ -110,9 +112,9 @@
     https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1
 
 .NOTES
-    Version:        2.6.0
+    Version:        2.7.0
     Creation Date:  August 12, 2021
-    Last Updated:   July 31, 2026
+    Last Updated:   August 1, 2026
     Author:         Richard Hicks
     Organization:   Richard M. Hicks Consulting, Inc.
     Contact:        rich@richardhicks.com
@@ -147,8 +149,10 @@ Process {
 
         }
 
-        # Initialize certificate object
+        # Initialize certificate and TLS session objects
         $Certificate = $Null
+        $TlsVersion = $Null
+        $CipherSuite = $Null
 
         # Create a TCP client object
         $TcpClient = New-Object -TypeName System.Net.Sockets.TcpClient
@@ -205,6 +209,22 @@ Process {
                 Write-Verbose 'Retrieving TLS certificate...'
                 $SslStream.AuthenticateAsClient($Server)
                 $Certificate = $SslStream.RemoteCertificate
+
+                # Capture negotiated TLS session details before the stream is disposed
+                $TlsVersion = $SslStream.SslProtocol
+
+                # NegotiatedCipherSuite requires .NET Core 3.0 or later (PowerShell 7). Fall back to CipherAlgorithm on Windows PowerShell 5.1.
+                If ($SslStream.PSObject.Properties['NegotiatedCipherSuite']) {
+
+                    $CipherSuite = $SslStream.NegotiatedCipherSuite
+
+                }
+
+                Else {
+
+                    $CipherSuite = $SslStream.CipherAlgorithm
+
+                }
 
             }
 
@@ -387,6 +407,8 @@ Process {
                 PublicKeyAlgorithm = $Certificate.PublicKey.Oid.FriendlyName
                 KeySize            = $KeySize
                 SignatureAlgorithm = $Certificate.SignatureAlgorithm.FriendlyName
+                TlsVersion         = $TlsVersion
+                CipherSuite        = $CipherSuite
 
             }
 
@@ -475,10 +497,10 @@ Process {
 }
 
 # SIG # Begin signature block
-# MIIk6wYJKoZIhvcNAQcCoIIk3DCCJNgCAQExDzANBglghkgBZQMEAgEFADB5Bgor
+# MIIk7AYJKoZIhvcNAQcCoIIk3TCCJNkCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAkt7Cj7DoA0g07
-# NAhBJqpVdUpq2B3WXlLnm5NqOTFkraCCH6YwggWNMIIEdaADAgECAhAOmxiO+dAt
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBwFRA0qiFUCuKM
+# exiQZgXAm4ajRHZRKpJ6xw9vtaXlxqCCH6YwggWNMIIEdaADAgECAhAOmxiO+dAt
 # 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
 # BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
@@ -647,29 +669,29 @@ Process {
 # cJIFcbojBcxlRcGG0LIhp6GvReQGgMgYxQbV1S3CrWqZzBt1R9xJgKf47CdxVRd/
 # ndUlQ05oxYy2zRWVFjF7mcr4C34Mj3ocCVccAvlKV9jEnstrniLvUxxVZE/rptb7
 # IRE2lskKPIJgbaP5t2nGj/ULLi49xTcBZU8atufk+EMF/cWuiC7POGT75qaL6vdC
-# vHlshtjdNXOCIUjsarfNZzGCBJswggSXAgEBMH0waTELMAkGA1UEBhMCVVMxFzAV
+# vHlshtjdNXOCIUjsarfNZzGCBJwwggSYAgEBMH0waTELMAkGA1UEBhMCVVMxFzAV
 # BgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMUEwPwYDVQQDEzhEaWdpQ2VydCBUcnVzdGVk
 # IEc0IENvZGUgU2lnbmluZyBSU0E0MDk2IFNIQTM4NCAyMDIxIENBMQIQDsYrSCrm
 # UJuvTRscProh/zANBglghkgBZQMEAgEFAKCBhDAYBgorBgEEAYI3AgEMMQowCKAC
 # gAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3AgEEMBwGCisGAQQBgjcCAQsx
-# DjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCDvzAGwpbrVN0PmmEoP+NdD
-# G1LcKGiTcj+ZNu7Qa+5oczALBgcqhkjOPQIBBQAERjBEAiBXvALRYdFxbcZtFSjc
-# Tka8YzfB6y1QzvAc+DGpGuKeTgIgElRXjEU2IM4gpABQLN05WdytFwSl36p16wW+
-# WY/9r9qhggMmMIIDIgYJKoZIhvcNAQkGMYIDEzCCAw8CAQEwfTBpMQswCQYDVQQG
-# EwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xQTA/BgNVBAMTOERpZ2lDZXJ0
-# IFRydXN0ZWQgRzQgVGltZVN0YW1waW5nIFJTQTQwOTYgU0hBMjU2IDIwMjUgQ0Ex
-# AhAKgO8YS43xBYLRxHanlXRoMA0GCWCGSAFlAwQCAQUAoGkwGAYJKoZIhvcNAQkD
-# MQsGCSqGSIb3DQEHATAcBgkqhkiG9w0BCQUxDxcNMjYwNzMxMTk1NzU0WjAvBgkq
-# hkiG9w0BCQQxIgQgZr4aSsGp8N9i8eeZtZIgmS/spEUteX8NbHhqyZKKgBAwDQYJ
-# KoZIhvcNAQEBBQAEggIAz5aCkZjCvD2D2AooJzOJfUOgmMUtgX1Qb1TAFLpZcQDN
-# zye4j86tUbbt7Lh/LQTd4ipCrEHY5LggYJ9qw/tQshorat/fRk7Nv8qAgG6uWcim
-# EDpNKTIT1rjDcJYDGtvNDWjXjMqrHKQuG/zMtX+Im9OceIxO1/hAJOU4o6RbO0O2
-# ZOE6ITmwDb4q/YBXyFbjVePTjoG8sp6MIf+1puqFotzuAqvaZ2iknVfsc6ua3MzK
-# LZ8g0VUXgbPHnxKkyhSCCPAVxEpzP9dBF/rm5IrsFaEQdemz9nN/zLkbjgSohRiO
-# hbUguu4k6cYDOSO4QQ02G2KRDYZmn/udUMVC3G6xkGMG0JGL8Mc03M69Outu/rNt
-# Q/j5h2IzSUhl61/kA8T8Cx+nlFunTHYRF355ZQU6XCXfLuG4FZt6+Fvgtjz6iLrJ
-# iu7SxHUoA/+ApPYhh8hWTjn03cTrMQV+M369EaVCwJQPvaHkez6HtslC5aYrefli
-# GIGIIO+DNQuwDj/bcOz/n0FFuvcjyzDjXL8POpFP82rcUdZa5nGfsdzvaqOBIc3r
-# kSKz8xcHlvGw6QXqL7exu3OglbX3U9zelGDzxHtuU/vT6TB/cqi4GoFP4Krvw+q3
-# kGDoT6XpEhs7N7/9OF3qT8tabF/XgvE9HZOa4FnzBuJtfWjhq0noqGV7lJ7vCjo=
+# DjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCC+1biIITwLqLNPEZ2sFXL6
+# 4YS00LM9aYlAHJocDNEbNDALBgcqhkjOPQIBBQAERzBFAiEAxyjoQaJTWXx0HafT
+# MQOcajhUKL9CGFEfgARMe9R8o+oCICMFipOWiTMj/WImhvbSXWZ9K2ulwFw683d+
+# IC5wxf+AoYIDJjCCAyIGCSqGSIb3DQEJBjGCAxMwggMPAgEBMH0waTELMAkGA1UE
+# BhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMUEwPwYDVQQDEzhEaWdpQ2Vy
+# dCBUcnVzdGVkIEc0IFRpbWVTdGFtcGluZyBSU0E0MDk2IFNIQTI1NiAyMDI1IENB
+# MQIQCoDvGEuN8QWC0cR2p5V0aDANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJ
+# AzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI2MDgwMTIyNDYwOFowLwYJ
+# KoZIhvcNAQkEMSIEIJucbEH8cy4XZkbHhbhz3wYjnxUhd4P2M1pdKGuJer3gMA0G
+# CSqGSIb3DQEBAQUABIICAMt34We/hWDv3UUxwldj2ciuqMA/5+2/NDQ2PaMfVZf/
+# SEpVOc8PtJCyueVz7nmsj5Hg/KHHQ3ODBang594RdHhGklClHLpeObLp2brSeXm5
+# aGncLrDRwNiJ1LYhQrekvBcZPrKtbf6Xw8P0bknlKBB86pWxtgGQ3kYFsDqvKpVG
+# 08cPk0akwSK4UsImERj5iHVBzrhzmOr6/cHUPZcpzpcT6x3SWjCtKVpv1Bg790yI
+# ezpaIyLBBsWnrkYm9WN8OuYtMqVgxfI4/yKZHvCNxl7g2o8ggKvYMEN9l0Tc6SGU
+# ym4t+3QrU3XcpnSU04BRMOtctRS+QvISoUbUuCiDMLPqq/NyrKJjtVRxHPkpaPxs
+# k3zEl0K6DH1Bsm6cQpvwJnKdVCw//fcsxcQU/jqi5Ifj1aoXCh/5NKHuk5ft9iJp
+# o4Z9s+i3Ydnh053JCk06JddWrTcFuEF7URgIy6g9CgUe+yDhO+PMolFFNw6CSiKG
+# Xv+E8XJlb0VtS8zdTf4nYIo3PbPqHBGmxnO5zL7g+zez9tM1lOKO5TRY80/XupxW
+# jUUmukfaaTBt0vPIZVU/VZ8Xxgj5GJ8/pmlwp41xViAwcGVaBCzsu+utPnBeukBD
+# Rwy7KF4KNZkHHNiU8qptwcKnNSHpe04aBI/NDea1UL4i08+vi0yUQpE3PxAkshZ8
 # SIG # End signature block

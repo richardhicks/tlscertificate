@@ -4,11 +4,11 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://docs.microsoft.com/en-us/powershell/)
-[![Version](https://img.shields.io/badge/Version-2.6.0-brightgreen.svg)](https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1)
+[![Version](https://img.shields.io/badge/Version-2.7.0-brightgreen.svg)](https://github.com/richardhicks/tlscertificate/blob/main/Get-TlsCertificate.ps1)
 
 ## Overview
 
-`Get-TlsCertificate.ps1` is a diagnostic tool for administrators and security professionals to quickly retrieve and inspect TLS certificates from any HTTPS-enabled endpoint. This includes public websites, internal web servers, VPN gateways, LDAPS servers, Remote Desktop Gateway servers, and more.
+`Get-TlsCertificate.ps1` is a diagnostic tool for administrators and security professionals to quickly retrieve and inspect TLS certificates from any HTTPS-enabled endpoint. This includes public websites, internal web servers, VPN gateways, LDAPS servers, Remote Desktop Gateway servers, and more. In addition to certificate details, the script reports the TLS protocol version and cipher suite negotiated for the session.
 
 ## Features
 
@@ -18,6 +18,7 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
 - Export certificates to PEM format files (saved as `<hostname>.crt` in the current directory, or to a custom path using `-FilePath`)
 - Export the full certificate chain to a single PEM file, with or without the root CA certificate (`-IncludeChain` and `-IncludeFullChain`)
 - Support for both RSA and ECC (Elliptic Curve) certificates
+- Reports the TLS protocol version and cipher suite negotiated for the session
 - Detailed certificate information including:
   - Subject and Subject Alternative Names (SANs)
   - Issuer
@@ -26,6 +27,7 @@ A PowerShell script for retrieving and examining Transport Layer Security (TLS) 
   - Enhanced Key Usage (EKU)
   - Public key algorithm and key size
   - Signature algorithm
+  - Negotiated TLS protocol version and cipher suite
 
 ## Requirements
 
@@ -326,6 +328,10 @@ The script returns a custom PowerShell object with the following properties:
 | `PublicKeyAlgorithm` | The public key algorithm (e.g., RSA, ECC) |
 | `KeySize` | The size of the public key in bits |
 | `SignatureAlgorithm` | The signature algorithm used by the certificate |
+| `TlsVersion` | The TLS protocol version negotiated for the session |
+| `CipherSuite` | The cipher suite negotiated for the session |
+
+> **Note:** The reported TLS version is the highest version mutually supported by the remote host and the local operating system, not a complete list of protocol versions the remote host supports. Full cipher suite names (e.g., `TLS_AES_256_GCM_SHA384`) require PowerShell 7. On Windows PowerShell 5.1, the `CipherSuite` property reports the cipher algorithm only (e.g., `Aes256`).
 
 When the `-OutFile` parameter is specified, the certificate is saved to a file in PEM format. When `-IncludeChain` or `-IncludeFullChain` is also specified, the certificate chain is saved as concatenated PEM blocks in a single file.
 
@@ -344,6 +350,8 @@ EnhancedKeyUsage        : {Server Authentication}
 PublicKeyAlgorithm      : RSA
 KeySize                 : 2048
 SignatureAlgorithm      : sha256RSA
+TlsVersion              : Tls13
+CipherSuite             : TLS_AES_256_GCM_SHA384
 ```
 
 ## Common Use Cases
@@ -378,6 +386,20 @@ $results = $servers | ForEach-Object {
 
 $results | Format-Table -AutoSize
 ```
+
+### TLS Protocol and Cipher Suite Audit
+
+```powershell
+# Report the negotiated TLS version and cipher suite across multiple servers
+$servers = 'www.contoso.com', 'mail.contoso.com', 'vpn.contoso.com'
+
+$servers | ForEach-Object {
+    .\Get-TlsCertificate.ps1 -Hostname $_ |
+    Select-Object @{N='Hostname';E={$_}}, TlsVersion, CipherSuite
+} | Format-Table -AutoSize
+```
+
+> **Note:** The reported TLS version reflects the highest protocol version mutually supported by the remote host and the local operating system — it is not a complete inventory of the protocol versions the remote host supports.
 
 ### Export to CSV
 
